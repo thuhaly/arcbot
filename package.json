@@ -1,0 +1,13 @@
+{
+  "name": "arcbot",
+  "version": "1.0.0",
+  "description": "ArcBot — USDC Telegram wallet on Arc Network",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "keywords": ["arc", "usdc", "telegram", "bot"],
+  "author": "anout",
+  "license": "MIT"
+}
