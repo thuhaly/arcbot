@@ -30,13 +30,28 @@ const bot = new Bot(BOT_TOKEN);
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'db.json');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify({ users: [], transactions: [] }));
+if (!fs.existsSync(DB_PATH)) fs.writeFileSync(DB_PATH, JSON.stringify({ users: [], transactions: [], subscribers: [] }));
 
 function readDB() { return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')); }
 function writeDB(db) { fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2)); }
 
 function getUser(userId) { return readDB().users.find(u => u.userId === userId); }
 function getUserByName(uname) { return readDB().users.find(u => u.username.toLowerCase() === uname.toLowerCase()); }
+
+function getSubscribers() { return readDB().subscribers || []; }
+function addSubscriber(chatId) {
+  const db = readDB();
+  if (!db.subscribers) db.subscribers = [];
+  if (!db.subscribers.includes(chatId)) { db.subscribers.push(chatId); writeDB(db); return true; }
+  return false;
+}
+function removeSubscriber(chatId) {
+  const db = readDB();
+  if (!db.subscribers) db.subscribers = [];
+  const idx = db.subscribers.indexOf(chatId);
+  if (idx >= 0) { db.subscribers.splice(idx, 1); writeDB(db); return true; }
+  return false;
+}
 
 function createUser(userId, username, address, privateKey) {
   const db = readDB();
@@ -183,6 +198,36 @@ bot.command('history', async (ctx) => {
   await ctx.reply('📊 *5 giao dịch gần:*\n\n' + lines.join('\n\n'), { parse_mode: 'Markdown', disable_web_page_preview: true });
 });
 
+bot.command('whale', async (ctx) => {
+  const subs = getSubscribers();
+  const isSubbed = subs.includes(ctx.chat.id);
+  await ctx.reply(
+    '🐋 *Whale Monitor*\\n\\n' +
+    'Ngưỡng alert: *' + (process.env.MIN_ALERT_USDC || 5000) + ' USDC*\\n' +
+    'Trạng thái: ' + (isSubbed ? '🟢 Đang theo dõi' : '⚪ Chưa đăng ký') + '\\n' +
+    'Đã đăng ký: ' + subs.length + ' chat\\n\\n' +
+    '/subwhale — Đăng ký nhận alert\\n' +
+    '/unsubwhale — Hủy đăng ký',
+    { parse_mode: 'Markdown' }
+  );
+});
+
+bot.command('subwhale', async (ctx) => {
+  if (addSubscriber(ctx.chat.id)) {
+    await ctx.reply('🐋 Đã đăng ký whale alert! Sẽ báo khi có giao dịch > ' + (process.env.MIN_ALERT_USDC || 5000) + ' USDC.');
+  } else {
+    await ctx.reply('Bạn đã đăng ký rồi. /unsubwhale để hủy.');
+  }
+});
+
+bot.command('unsubwhale', async (ctx) => {
+  if (removeSubscriber(ctx.chat.id)) {
+    await ctx.reply('Đã hủy whale alert.');
+  } else {
+    await ctx.reply('Bạn chưa đăng ký.');
+  }
+});
+
 bot.command('help', async (ctx) => {
   await ctx.reply(
     '🤖 *ArcBot*\n\n' +
@@ -191,6 +236,10 @@ bot.command('help', async (ctx) => {
     '/deposit — Địa chỉ nạp\n' +
     '/send @user 50 — Gửi USDC\n' +
     '/history — Lịch sử\n\n' +
+    '🐋 Whales:\\n' +
+    '/whale — Whale monitor status\\n' +
+    '/subwhale — Đăng ký whale alert\\n' +
+    '/unsubwhale — Hủy whale alert\\n\\n' +
     '⚙️ Max ' + MAX_SEND + ' USDC/lần, ' + DAILY_CAP + ' USDC/ngày',
     { parse_mode: 'Markdown' }
   );
