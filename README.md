@@ -1,37 +1,36 @@
-# ArcBot — USDC Telegram Wallet
+# ArcWhale — Whale Alert Bot
 
-Telegram bot cho phép gửi/nhận USDC trên Arc Network ngay trong chat.
+Telegram bot theo dõi giao dịch USDC lớn trên Arc Network.
+
+## Tính năng
+
+- Quét block Arc mỗi 10s
+- Phát hiện giao dịch > 5000 USDC
+- Phân loại: 🐋 Large (5K+), 🐳 Whale (100K+)
+- Gửi alert trực tiếp vào Telegram chat
 
 ## Commands
 
 | Command | Mô tả |
 |---------|-------|
-| `/start` | Tạo ví + xem số dư |
-| `/balance` | Xem số dư USDC |
-| `/deposit` | Xem địa chỉ nạp |
-| `/send @user 50` | Gửi USDC cho người dùng Telegram |
-| `/send 0xabc... 50` | Gửi USDC ra ví ngoài |
-| `/history` | 5 giao dịch gần nhất |
-
-## Giới hạn
-
-- 100 USDC/lần
-- 300 USDC/ngày
-- 5 giao dịch/giờ
+| `/start` | Giới thiệu |
+| `/sub` | Đăng ký whale alert |
+| `/unsub` | Hủy whale alert |
+| `/status` | Xem trạng thái |
 
 ## Cài đặt
 
 ```bash
 npm install
-# Tạo bot trên @BotFather, lấy token
-# Sửa BOT_TOKEN trong .env
+# Sửa BOT_TOKEN trong .env (lấy từ @BotFather)
 npm start
+pm2 start monitor.js --name arcwhale
 ```
 
-## Deploy với pm2
+## Deploy
 
 ```bash
 pm2 start bot.js --name arcbot
+pm2 start monitor.js --name arcwhale
 pm2 save
-pm2 startup
 ```

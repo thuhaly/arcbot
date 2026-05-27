@@ -1,13 +1,14 @@
 require('dotenv').config();
 const { createPublicClient, http, formatUnits } = require('viem');
 const { Bot } = require('grammy');
+const fs = require('fs');
+const path = require('path');
 
 // Config
 const ARC_RPC = process.env.ARC_RPC || 'https://rpc.testnet.arc.network';
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
-const ALERT_CHAT_ID = process.env.ALERT_CHAT_ID || ''; // Telegram chat ID nhận alert
-const MIN_USDC = Number(process.env.MIN_ALERT_USDC) || 5000; // Ngưỡng alert (USDC)
-const POLL_INTERVAL = Number(process.env.POLL_INTERVAL) || 10; // Giây
+const MIN_USDC = Number(process.env.MIN_ALERT_USDC) || 5000;
+const POLL_INTERVAL = Number(process.env.POLL_INTERVAL) || 10;
 
 const arc = {
   id: 5042002, name: 'Arc Testnet',
@@ -18,8 +19,8 @@ const arc = {
 
 const client = createPublicClient({ chain: arc, transport: http(ARC_RPC) });
 const bot = new Bot(BOT_TOKEN);
+const DB_PATH = path.join(__dirname, 'data', 'db.json');
 
-// Track last processed block
 let lastBlock = 0;
 
 function fmtAddr(a) { return a.slice(0, 6) + '...' + a.slice(-4); }
@@ -31,29 +32,23 @@ function formatUSD(amount) {
   return num.toFixed(2);
 }
 
-async function sendAlert(msg) {
-  // Gửi đến ALERT_CHAT_ID (nếu có)
-  if (ALERT_CHAT_ID) {
-    try {
-      await bot.api.sendMessage(ALERT_CHAT_ID, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
-    } catch (e) { console.error('Alert channel error:', e.message); }
-  }
-
-  // Gửi đến tất cả subscribers
+function getSubscribers() {
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const dbPath = path.join(__dirname, 'data', 'db.json');
-    if (fs.existsSync(dbPath)) {
-      const db = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
-      const subs = db.subscribers || [];
-      for (const chatId of subs) {
-        try {
-          await bot.api.sendMessage(chatId, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
-        } catch (e) { /* subscriber might have blocked bot */ }
-      }
+    if (fs.existsSync(DB_PATH)) {
+      const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+      return db.subscribers || [];
     }
-  } catch (e) { console.error('Subscriber broadcast error:', e.message); }
+  } catch {}
+  return [];
+}
+
+async function broadcast(msg) {
+  const subs = getSubscribers();
+  for (const chatId of subs) {
+    try {
+      await bot.api.sendMessage(chatId, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    } catch {}
+  }
 }
 
 async function scanBlock(blockNum) {
@@ -68,24 +63,28 @@ async function scanBlock(blockNum) {
         const from = tx.from;
         const to = tx.to || '0x0000000000000000000000000000000000000000';
 
+        // Phân loại giao dịch
+        const isContract = to && to.length === 42 && !tx.to;
+        const label = valueNum >= 100000 ? '🐳 Whale' : '🐋 Large';
+
         const msg = [
-          '🐋 *Whale Alert — Arc Network*',
+          label + ' *Alert — Arc Network*',
           '',
-          `💰 *${formatUSD(value)} USDC* transferred`,
+          '💰 *' + formatUSD(value) + ' USDC* transferred',
           '',
-          `📤 From: \`${fmtAddr(from)}\``,
-          `📥 To: \`${fmtAddr(to)}\``,
+          '📤 From: `' + fmtAddr(from) + '`',
+          '📥 To: `' + fmtAddr(to) + '`',
           '',
-          `🔗 [View Tx](https://testnet.explorer.arc.network/tx/${tx.hash})`,
-          `📦 Block: #${blockNum}`,
+          '🔗 [View Tx](https://testnet.explorer.arc.network/tx/' + tx.hash + ')',
+          '📦 Block: #' + blockNum,
         ].join('\n');
 
-        console.log(`🐋 ${formatUSD(value)} USDC | #${blockNum} | ${fmtAddr(from)} → ${fmtAddr(to)}`);
-        await sendAlert(msg);
+        console.log(label + ' ' + formatUSD(value) + ' USDC | #' + blockNum + ' | ' + fmtAddr(from) + ' → ' + fmtAddr(to));
+        await broadcast(msg);
       }
     }
   } catch (e) {
-    console.error(`Block ${blockNum} error:`, e.message);
+    console.error('Block ' + blockNum + ' error:', e.message);
   }
 }
 
@@ -95,12 +94,12 @@ async function poll() {
 
     if (lastBlock === 0) {
       lastBlock = currentBlock - 1;
-      console.log(`🚀 Monitor started at block #${lastBlock} | Threshold: ${MIN_USDC} USDC`);
+      console.log('🐋 Monitor started at block #' + lastBlock + ' | Threshold: ' + MIN_USDC + ' USDC');
     }
 
     if (currentBlock > lastBlock) {
       const startBlock = lastBlock + 1;
-      const endBlock = Math.min(currentBlock, lastBlock + 5); // Max 5 blocks per poll
+      const endBlock = Math.min(currentBlock, lastBlock + 5);
 
       for (let b = startBlock; b <= endBlock; b++) {
         await scanBlock(b);
@@ -113,12 +112,10 @@ async function poll() {
   }
 }
 
-// Start
 async function start() {
   await bot.api.getMe();
-  console.log('🤖 Whale Monitor connected to Telegram');
-
-  poll(); // Initial
+  console.log('🐋 ArcWhale monitor connected');
+  poll();
   setInterval(poll, POLL_INTERVAL * 1000);
 }
 
