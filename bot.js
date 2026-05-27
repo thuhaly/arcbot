@@ -5,6 +5,8 @@ const path = require('path');
 
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
 const MIN_USDC = process.env.MIN_ALERT_USDC || 5000;
+const SWAP_MIN = process.env.SWAP_MIN_USDC || 500;
+const TRANSFER_MIN = process.env.TRANSFER_MIN_USDC || 100000;
 
 if (!BOT_TOKEN) { console.error('BOT_TOKEN not set'); process.exit(1); }
 
@@ -39,7 +41,8 @@ bot.command('start', async (ctx) => {
   await ctx.reply(
     '🐋 *ArcWhale — Whale Alert Bot*\n\n' +
     'Theo dõi giao dịch USDC lớn trên Arc Network.\n\n' +
-    'Ngưỡng alert: *' + MIN_USDC + ' USDC*\n\n' +
+    '🔄 Swap alert: > *' + SWAP_MIN + ' USDC*\n' +
+    '🐳 Transfer alert: > *' + (TRANSFER_MIN / 1000).toFixed(0) + 'K USDC*\n\n' +
     '/sub — Đăng ký nhận alert\n' +
     '/unsub — Hủy đăng ký\n' +
     '/status — Xem trạng thái\n' +
@@ -69,7 +72,8 @@ bot.command('status', async (ctx) => {
   const isSubbed = subs.includes(ctx.chat.id);
   await ctx.reply(
     '🐋 *ArcWhale Status*\n\n' +
-    'Ngưỡng: *' + MIN_USDC + ' USDC*\n' +
+    '🔄 Swap: > *' + SWAP_MIN + ' USDC*\n' +
+    '🐳 Transfer: > *' + (TRANSFER_MIN / 1000).toFixed(0) + 'K USDC*\n' +
     'Trạng thái: ' + (isSubbed ? '🟢 Đang theo dõi' : '⚪ Chưa đăng ký') + '\n' +
     'Tổng subscribers: ' + subs.length,
     { parse_mode: 'Markdown' }

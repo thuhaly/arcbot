@@ -7,7 +7,8 @@ const path = require('path');
 // Config
 const ARC_RPC = process.env.ARC_RPC || 'https://rpc.testnet.arc.network';
 const BOT_TOKEN = process.env.BOT_TOKEN || '';
-const MIN_USDC = Number(process.env.MIN_ALERT_USDC) || 5000;
+const SWAP_MIN = Number(process.env.SWAP_MIN_USDC) || 500;
+const TRANSFER_MIN = Number(process.env.TRANSFER_MIN_USDC) || 100000;
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL) || 10;
 
 const arc = {
@@ -51,26 +52,51 @@ async function broadcast(msg) {
   }
 }
 
+async function isContract(address) {
+  if (!address || address === '0x0000000000000000000000000000000000000000') return false;
+  try {
+    const code = await client.getBytecode({ address });
+    return code && code !== '0x';
+  } catch {
+    return false;
+  }
+}
+
 async function scanBlock(blockNum) {
   try {
     const block = await client.getBlock({ blockNumber: BigInt(blockNum), includeTransactions: true });
 
     for (const tx of block.transactions) {
-      const value = formatUnits(tx.value, 6);
-      const valueNum = parseFloat(value);
+      const valueNum = parseFloat(formatUnits(tx.value, 6));
+      if (valueNum <= 0) continue;
 
-      if (valueNum >= MIN_USDC) {
-        const from = tx.from;
-        const to = tx.to || '0x0000000000000000000000000000000000000000';
+      const from = tx.from;
+      const to = tx.to || '0x0000000000000000000000000000000000000000';
 
-        // Phân loại giao dịch
-        const isContract = to && to.length === 42 && !tx.to;
-        const label = valueNum >= 100000 ? '🐳 Whale' : '🐋 Large';
+      // Check if this is a swap (to is a contract)
+      const toIsContract = await isContract(to);
+      let label, emoji, minThreshold;
+
+      if (toIsContract) {
+        // Likely DEX/protocol interaction → swap
+        minThreshold = SWAP_MIN;
+        label = '🔄 Swap';
+        emoji = '🔄';
+      } else {
+        // Direct transfer
+        minThreshold = TRANSFER_MIN;
+        label = '🐳 Whale Transfer';
+        emoji = '💰';
+      }
+
+      if (valueNum >= minThreshold) {
+        const typeTag = toIsContract ? 'Swap → Contract' : 'Transfer';
 
         const msg = [
-          label + ' *Alert — Arc Network*',
+          emoji + ' *' + label + ' — Arc Network*',
           '',
-          '💰 *' + formatUSD(value) + ' USDC* transferred',
+          '💰 *' + formatUSD(value) + ' USDC*',
+          '📋 Type: ' + typeTag,
           '',
           '📤 From: `' + fmtAddr(from) + '`',
           '📥 To: `' + fmtAddr(to) + '`',
@@ -94,12 +120,14 @@ async function poll() {
 
     if (lastBlock === 0) {
       lastBlock = currentBlock - 1;
-      console.log('🐋 Monitor started at block #' + lastBlock + ' | Threshold: ' + MIN_USDC + ' USDC');
+      console.log('🐋 Monitor started at block #' + lastBlock);
+      console.log('   Swap alert: > ' + SWAP_MIN + ' USDC');
+      console.log('   Transfer alert: > ' + (TRANSFER_MIN / 1000).toFixed(0) + 'K USDC');
     }
 
     if (currentBlock > lastBlock) {
       const startBlock = lastBlock + 1;
-      const endBlock = Math.min(currentBlock, lastBlock + 5);
+      const endBlock = Math.min(currentBlock, lastBlock + 3);
 
       for (let b = startBlock; b <= endBlock; b++) {
         await scanBlock(b);
